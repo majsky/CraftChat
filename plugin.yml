@@ -1,0 +1,6 @@
+name: CraftChat
+main: me.majsky.bukkit.craftChat.CraftChat
+version: 1.0.0
+author: majsky
+description: >
+             CraftChat allows chatting outside bukkit
