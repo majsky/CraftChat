@@ -6,7 +6,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
-import me.majsky.networking.PacketDispatcher;
+import me.majsky.networking.packet.Packet;
 import me.majsky.networking.packet.PacketBookMessenger;
 
 public class ChatServer extends Thread{
@@ -14,7 +14,7 @@ public class ChatServer extends Thread{
     public final int port;
     protected ServerSocket serverSocket;
     protected List<ConnectionHandler> activeConnections;
-    
+
     public ChatServer(int port, int backlog){
         super("BookChat Server thread");
         this.port = port;
@@ -25,7 +25,7 @@ public class ChatServer extends Thread{
             e.printStackTrace();
         }
     }
-    
+
     protected void close(){
         try {
             for(ConnectionHandler ch:activeConnections)
@@ -36,11 +36,11 @@ public class ChatServer extends Thread{
             e.printStackTrace();
         }
     }
-    
+
     public synchronized void addToList(ConnectionHandler handler){
         activeConnections.add(handler);
     }
-    
+
     @Override
     public void run() {
         CraftChat.instance.logger.info("Server started");
@@ -56,42 +56,69 @@ public class ChatServer extends Thread{
             }
         }
     }
-    
 
-    
+
+
     protected void dispatch(String msg, String sender){
         dispatch(msg, sender, -1);
     }
-    
+
     protected void dispatch(String msg, String sender, int notSend){
         while(msg.contains("§"))
             msg = msg.substring(msg.indexOf("§") + 1, msg.length()-1);
         for(ConnectionHandler ch:activeConnections){
             if(ch.id == notSend)
                 continue;
+            PacketBookMessenger packet = new PacketBookMessenger();
+            packet.msg = msg;
+            packet.sender = sender;
             try {
-                PacketBookMessenger packet = new PacketBookMessenger();
-                packet.msg = msg;
-                packet.sender = sender;
-                PacketDispatcher.sendPacket(ch.s, packet);
-            } catch (Exception e) {
+                ch.dispatcher.sendPacket(packet);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    protected void sendTo(int id, String msg, String sender){
+        for(ConnectionHandler ch:activeConnections){
+            if(ch.id != id)
+                continue;
+
+            PacketBookMessenger packet = new PacketBookMessenger();
+            packet.msg = msg;
+            packet.sender = sender;
+            try {
+                ch.dispatcher.sendPacket(packet);
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
     
-    protected void sendTo(int id, String msg, String sender){
+    protected void dispatchPacket(Packet packet){
+        dispatchPacket(packet, -1);
+    }
+    
+    protected void dispatchPacket(Packet packet, int notSend){
+        for(ConnectionHandler ch:activeConnections)
+            if(ch.id != notSend)
+                try {
+                    ch.dispatcher.sendPacket(packet);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+    }
+    
+    protected void sendPacket(int id, Packet packet){
         for(ConnectionHandler ch:activeConnections){
-            if(ch.id != id)
-                continue;
-            
-            PacketBookMessenger packet = new PacketBookMessenger();
-            packet.msg = msg;
-            packet.sender = sender;
-            try {
-                PacketDispatcher.sendPacket(ch.s, packet);
-            } catch (Exception e) {
-                e.printStackTrace();
+            if(ch.id == id){
+                try {
+                    ch.dispatcher.sendPacket(packet);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break;
             }
         }
     }

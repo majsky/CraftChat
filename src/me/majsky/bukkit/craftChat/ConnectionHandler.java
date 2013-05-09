@@ -1,35 +1,47 @@
 package me.majsky.bukkit.craftChat;
 
 import java.io.EOFException;
+import java.io.IOException;
 import java.net.Socket;
 
-import me.majsky.networking.PacketManager;
+import me.majsky.networking.PacketDispatcher;
+import me.majsky.networking.PacketReciever;
 import me.majsky.networking.packet.Packet;
 import me.majsky.networking.packet.PacketBookMessenger;
+import me.majsky.networking.packet.PacketCmdCall;
+import me.majsky.networking.packet.PacketCmdResponse;
 import me.majsky.networking.packet.PacketStatusChange;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.entity.Player;
 
 public class ConnectionHandler extends Thread{
 
     protected final Socket s;
-    private String name;
+    protected PacketDispatcher dispatcher;
+    protected PacketReciever reciever;
+    protected String name;
     protected final int id;
     
     public ConnectionHandler(Socket connection, int id){
         super("BookChatClient thread");
         this.id = id;
         this.s = connection;
+        try {
+            dispatcher = new PacketDispatcher(connection);
+            reciever = new PacketReciever(connection);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public void run() {
         try {
-            Packet packet;
             String msg = "";
             do{
-                packet = PacketManager.recievePacket(s);
+                Packet packet = reciever.recievePacket();
                 if(packet instanceof PacketBookMessenger){
                     PacketBookMessenger p = (PacketBookMessenger)packet;
                     msg = p.msg;
@@ -44,8 +56,37 @@ public class ConnectionHandler extends Thread{
                     }else if(p.stausID == PacketStatusChange.SERVER_JOIN){
                         name = p.nick;
                         Bukkit.getServer().broadcastMessage(ChatColor.YELLOW + name + " (" + s.getInetAddress().getHostName() + ") joined chat " + (!p.customText.equals("")?"("+p.customText+")":""));
-                        CraftChat.instance.server.dispatch(name + " (" + s.getInetAddress().getHostName() + ") joined chat " + (!p.customText.equals("")?"("+p.customText+")":""), "Server");
+                        CraftChat.instance.server.dispatch(name + " (" + s.getInetAddress().getHostName() + ") joined chat " + (!p.customText.equals("")?"("+p.customText+")":""), "SERVER");
                     }
+                }else if(packet instanceof PacketCmdCall){
+                    PacketCmdCall p = (PacketCmdCall) packet;
+                    CraftChat.instance.logger.info("User " + name + " is calling command " + p.cmd);
+                    PacketCmdResponse response = new PacketCmdResponse(p);
+                    switch (p.cmd) {
+                        case "list":
+                            StringBuilder data = new StringBuilder();
+                            for(Player player:Bukkit.getServer().getOnlinePlayers())
+                                data.append(player.getName() + ":");
+                            for(ConnectionHandler ch:CraftChat.instance.server.activeConnections)
+                                data.append("-" + ch.name + ":");
+                            response.result = data.toString().split(":");
+                            response.resultStatus = PacketCmdResponse.SUCCESSFUL;
+                            break;
+                        case "me":
+                            if(p.args.length != 1){
+                                response.resultStatus = PacketCmdResponse.BAD_ARGS;
+                                break;
+                            }
+                            Bukkit.getServer().broadcastMessage("*" + name + " " + p.args[0]);
+                            CraftChat.instance.server.dispatch("*" + name + " " + p.args[0], "SERVER");
+                            response.resultStatus = PacketCmdResponse.SUCCESSFUL;
+                            break;
+                        default:
+                            response.resultStatus = PacketCmdResponse.UNKNOWN_COMMAND;
+                            break;
+                    }
+                    if(p.needsResponse)
+                        dispatcher.sendPacket(response);
                 }
             }while(!msg.equals("END"));
         } catch (Exception e) {
