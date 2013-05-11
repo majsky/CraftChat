@@ -6,19 +6,19 @@ import java.net.Socket;
 
 import me.majsky.networking.packet.Packet;
 
-public class PacketDispatcher {
-    
+public class PacketDispatcher{
+
     private ObjectOutputStream oos;
-    
+
     public PacketDispatcher(Socket s) throws IOException{
         oos = new ObjectOutputStream(s.getOutputStream());
     }
-    
+
     public void sendPacket(Packet packet) throws IOException{
         oos.writeObject(packet);
         oos.flush();
     }
-    
+
     public void close() throws IOException{
         oos.close();
     }

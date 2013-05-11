@@ -17,14 +17,15 @@ import javax.swing.text.DefaultCaret;
 import me.majsky.networking.PacketDispatcher;
 import me.majsky.networking.PacketReciever;
 import me.majsky.networking.packet.Packet;
-import me.majsky.networking.packet.PacketBookMessenger;
 import me.majsky.networking.packet.PacketCmdCall;
 import me.majsky.networking.packet.PacketCmdResponse;
+import me.majsky.networking.packet.PacketMsg;
+import me.majsky.networking.packet.PacketPrivateMsg;
 import me.majsky.networking.packet.PacketStatusChange;
 
 public class CraftChatClient extends JFrame{
     private static final long serialVersionUID = 1L;
-    
+
     private JTextField userText;
     private JTextArea textArea;
     private Socket connection;
@@ -32,20 +33,20 @@ public class CraftChatClient extends JFrame{
     private int port;
     private String nick;
     private Scanner s;
-    
+
     private PacketDispatcher packetDispatcher;
     private PacketReciever packetReciever;
-    
+
     private boolean shouldReset = true;
-    
+
     public CraftChatClient(final boolean nogui, String server, String port, String name){
         super("CraftChat client");
-        
+
         userText = new JTextField();
         userText.setEditable(true);
-        userText.addActionListener(new ActionListener() {
+        userText.addActionListener(new ActionListener(){
             @Override
-            public void actionPerformed(ActionEvent arg0) {
+            public void actionPerformed(ActionEvent arg0){
                 handleMsg(arg0.getActionCommand());
                 if(shouldReset)
                     userText.setText("");
@@ -62,17 +63,16 @@ public class CraftChatClient extends JFrame{
         textPane.setAutoscrolls(true);
         add(textPane, BorderLayout.CENTER);
         setSize(600, 300);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setVisible(!nogui);
         if(nogui){
-            this.s = new Scanner(System.in);
-            new Thread(new Runnable() {
+            s = new Scanner(System.in);
+            new Thread(new Runnable(){
                 @Override
-                public void run() {
-                    while(nogui){
-                        handleMsg(CraftChatClient.this.s.nextLine());
-                    }
+                public void run(){
+                    while(nogui)
+                        handleMsg(s.nextLine());
                 }
             }).start();
         }
@@ -89,7 +89,7 @@ public class CraftChatClient extends JFrame{
             sendPacket(packet);
         }
     }
-    
+
     public void handleMsg(String msg){
         if(server == null){
             server = msg;
@@ -109,45 +109,60 @@ public class CraftChatClient extends JFrame{
             PacketStatusChange packet = new PacketStatusChange();
             packet.nick = nick;
             packet.stausID = PacketStatusChange.SERVER_JOIN;
-            try {
-                packetDispatcher.sendPacket(packet);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            sendPacket(packet);
             return;
         }
-        
+
         if(!msg.startsWith("/")){
             addText("[You] " + msg);
             sendMsg(msg);
             return;
         }
-        
+
         String[] cmd = msg.split(" ");
         cmd[0] = cmd[0].substring(1);
-        
-        switch(cmd[0].toLowerCase()){
+
+        switch (cmd[0].toLowerCase()){
             case "nick":
+                if(cmd.length < 2){
+                    addText("Usage: /nick [username]");
+                    return;
+                }
                 nick = cmd[1];
-                addText("Your nick has been changd to " + cmd[1]);
                 PacketStatusChange packet = new PacketStatusChange();
                 packet.nick = nick;
                 packet.stausID = PacketStatusChange.NICK_CHANGED;
-                try {
+                try{
                     packetDispatcher.sendPacket(packet);
-                } catch (Exception e) {
+                } catch(Exception e){
                     e.printStackTrace();
                 }
                 break;
             case "end":
                 userText.setEditable(false);
-                System.exit(0);
-                break;
+                PacketStatusChange statusPacker = new PacketStatusChange();
+                statusPacker.nick = nick;
+                statusPacker.stausID = PacketStatusChange.SERVER_QUIT;
+                if(cmd.length<1){
+                    StringBuilder leftMSG = new StringBuilder();
+                    for(int i=1;i<cmd.length;i++)
+                        leftMSG.append(cmd[i] + " ");
+                    statusPacker.customText = leftMSG.toString();
+                }
+                sendPacket(statusPacker);
+                try{
+                    packetDispatcher.close();
+                    packetReciever.close();
+                } catch(IOException e){
+                    e.printStackTrace();
+                }finally{
+                    System.exit(0);
+                }
             case "list":
                 addText("Calling for player list...");
                 PacketCmdCall p = new PacketCmdCall();
                 p.cmd = "list";
-                p.args = new String[]{};
+                p.args = new String[] {};
                 sendPacket(p);
                 break;
             case "me":
@@ -156,58 +171,75 @@ public class CraftChatClient extends JFrame{
                     return;
                 }
                 StringBuilder sb = new StringBuilder();
-                for(int i=1;i<cmd.length;i++)
+                for(int i = 1; i < cmd.length; i++)
                     sb.append(cmd[i] + " ");
                 PacketCmdCall p1 = new PacketCmdCall();
                 p1.cmd = "me";
-                p1.args = new String[]{sb.toString()};
+                p1.args = new String[] { sb.toString() };
                 p1.needsResponse = false;
                 sendPacket(p1);
                 break;
+            case "msg":
+                if(cmd.length < 3){
+                    addText("Usage: /msg [target] [text]");
+                    return;
+                }
+                StringBuilder text = new StringBuilder();
+                for(int i = 2; i < cmd.length; i++)
+                    text.append(cmd[i]);
+                PacketPrivateMsg p2 = new PacketPrivateMsg();
+                p2.msg = text.toString();
+                p2.target = cmd[1];
+                p2.sender = nick;
+                sendPacket(p2);
+                addText(String.format("[You -> %s] %s", p2.target, p2.msg));
+                break;
         }
     }
-    
+
     public void sendMsg(String text){
-        PacketBookMessenger packet = new PacketBookMessenger();
+        PacketMsg packet = new PacketMsg();
         packet.sender = nick;
         packet.msg = text;
         sendPacket(packet);
     }
-    
+
     public void sendPacket(Packet packet){
-        try {
+        try{
             packetDispatcher.sendPacket(packet);
-        } catch (IOException e) {
+        } catch(IOException e){
             e.printStackTrace();
         }
     }
-    
+
     public void addText(String text){
         System.out.println(text);
         textArea.append(text + "\n");
     }
-    
+
     public void inChat(){
         boolean connected = true;
         do{
             Packet packet;
-            try {
+            try{
                 packet = packetReciever.recievePacket();
-            } catch (ClassNotFoundException | IOException e) {
+            } catch(ClassNotFoundException | IOException e){
                 e.printStackTrace();
                 continue;
             }
-            //addText(packet!=null?packet.toString():packet + "");
-            if(packet instanceof PacketBookMessenger){
-                PacketBookMessenger p = (PacketBookMessenger)packet;
+            if(packet instanceof PacketMsg){
+                PacketMsg p = (PacketMsg)packet;
                 addText(String.format("[%s] %s", p.sender, p.msg));
-                connected = p.sender.equals("SERVER")?p.msg.equals("END")?false:true:true;
-            }else if(packet instanceof PacketCmdResponse){
-                PacketCmdResponse p = (PacketCmdResponse) packet;
-                switch (p.call_cmd) {
+                connected = p.sender.equals("SERVER") ? p.msg.equals("END") ? false : true : true;
+            } else if(packet instanceof PacketPrivateMsg){
+                PacketPrivateMsg p = (PacketPrivateMsg)packet;
+                addText(String.format("[%s -> you] %s", p.sender, p.msg));
+            } else if(packet instanceof PacketCmdResponse){
+                PacketCmdResponse p = (PacketCmdResponse)packet;
+                switch (p.call_cmd){
                     case "list":
                         if(p.resultStatus != PacketCmdResponse.SUCCESSFUL){
-                            addText("Can't get online player list!");
+                            addText("Can't get online player list! (Error code " + p.resultStatus + ")");
                             break;
                         }
                         addText("Online players & chatters:");
@@ -219,53 +251,51 @@ public class CraftChatClient extends JFrame{
                         break;
                 }
             }
-        }while(connected);
-        try {
+        } while(connected);
+        try{
             addText("Closing connection...");
             packetDispatcher.close();
             packetReciever.close();
             connection.close();
-        } catch (IOException e) {
+        } catch(IOException e){
             e.printStackTrace();
         }
     }
-    
+
     private void openConnection(){
-        try {
+        try{
             connection = new Socket(InetAddress.getByName(server), port);
             packetDispatcher = new PacketDispatcher(connection);
             packetReciever = new PacketReciever(connection);
             textArea.setVisible(true);
-        } catch (IOException e) {
+        } catch(IOException e){
             System.out.println("Connection to server failed");
             e.printStackTrace();
         }
-        new Thread(new Runnable() {
+        new Thread(new Runnable(){
             @Override
-            public void run() {
+            public void run(){
                 inChat();
             }
         }).start();
     }
-    
+
     public static void main(String[] args){
         boolean nogui = false;
         String server, port, nick;
         server = port = nick = null;
-        for(int i=0;i<args.length;i++){
-            if(args[i].equalsIgnoreCase("nogui")){
+        for(int i = 0; i < args.length; i++)
+            if(args[i].equalsIgnoreCase("nogui"))
                 nogui = true;
-            }else if(args[i].equalsIgnoreCase("-server")){
-                if(i+1 < args.length)
-                    server = args[i+1];
-            }else if(args[i].equalsIgnoreCase("-port")){
-                if(i+1 < args.length)
-                    port = args[i+1];
-            }else if(args[i].equalsIgnoreCase("-nick")){
-                if(i+1 < args.length)
-                    nick = args[i+1];
-            }
-        }
-        new CraftChatClient(nogui, server, port, nick);      
+            else if(args[i].equalsIgnoreCase("-server")){
+                if(i + 1 < args.length)
+                    server = args[i + 1];
+            } else if(args[i].equalsIgnoreCase("-port")){
+                if(i + 1 < args.length)
+                    port = args[i + 1];
+            } else if(args[i].equalsIgnoreCase("-nick"))
+                if(i + 1 < args.length)
+                    nick = args[i + 1];
+        new CraftChatClient(nogui, server, port, nick);
     }
 }

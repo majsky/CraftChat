@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import me.majsky.networking.packet.Packet;
-import me.majsky.networking.packet.PacketBookMessenger;
+import me.majsky.networking.packet.PacketMsg;
 
 public class ChatServer extends Thread{
 
@@ -19,20 +19,20 @@ public class ChatServer extends Thread{
         super("BookChat Server thread");
         this.port = port;
         activeConnections = new ArrayList<>();
-        try {
+        try{
             serverSocket = new ServerSocket(port, backlog);
-        } catch (IOException e) {
+        } catch(IOException e){
             e.printStackTrace();
         }
     }
 
     protected void close(){
-        try {
+        try{
             for(ConnectionHandler ch:activeConnections)
                 ch.s.close();
             activeConnections.clear();
             serverSocket.close();
-        } catch (IOException e) {
+        } catch(IOException e){
             e.printStackTrace();
         }
     }
@@ -42,22 +42,20 @@ public class ChatServer extends Thread{
     }
 
     @Override
-    public void run() {
+    public void run(){
         CraftChat.instance.logger.info("Server started");
-        while(serverSocket != null && !serverSocket.isClosed()){
-            try {
+        while(serverSocket != null && !serverSocket.isClosed())
+            try{
                 Socket connection = serverSocket.accept();
-                CraftChat.instance.logger.info(String.format("Remote chat client connected from %s wtih id %s", connection.getInetAddress().getHostName(), activeConnections.size()));
+                CraftChat.instance.logger.info(String.format("Remote chat client connected from %s wtih id %s",
+                        connection.getInetAddress().getHostName(), activeConnections.size()));
                 ConnectionHandler connectionHandler = new ConnectionHandler(connection, activeConnections.size());
                 addToList(connectionHandler);
                 connectionHandler.start();
-            } catch (IOException e) {
+            } catch(IOException e){
                 e.printStackTrace();
             }
-        }
     }
-
-
 
     protected void dispatch(String msg, String sender){
         dispatch(msg, sender, -1);
@@ -65,16 +63,16 @@ public class ChatServer extends Thread{
 
     protected void dispatch(String msg, String sender, int notSend){
         while(msg.contains("§"))
-            msg = msg.substring(msg.indexOf("§") + 1, msg.length()-1);
+            msg = msg.substring(msg.indexOf("§") + 1, msg.length() - 1);
         for(ConnectionHandler ch:activeConnections){
             if(ch.id == notSend)
                 continue;
-            PacketBookMessenger packet = new PacketBookMessenger();
+            PacketMsg packet = new PacketMsg();
             packet.msg = msg;
             packet.sender = sender;
-            try {
+            try{
                 ch.dispatcher.sendPacket(packet);
-            } catch (IOException e) {
+            } catch(IOException e){
                 e.printStackTrace();
             }
         }
@@ -85,42 +83,48 @@ public class ChatServer extends Thread{
             if(ch.id != id)
                 continue;
 
-            PacketBookMessenger packet = new PacketBookMessenger();
+            PacketMsg packet = new PacketMsg();
             packet.msg = msg;
             packet.sender = sender;
-            try {
+            try{
                 ch.dispatcher.sendPacket(packet);
-            } catch (IOException e) {
+            } catch(IOException e){
                 e.printStackTrace();
             }
         }
     }
-    
+
     protected void dispatchPacket(Packet packet){
         dispatchPacket(packet, -1);
     }
-    
+
     protected void dispatchPacket(Packet packet, int notSend){
         for(ConnectionHandler ch:activeConnections)
             if(ch.id != notSend)
-                try {
+                try{
                     ch.dispatcher.sendPacket(packet);
-                } catch (IOException e) {
+                } catch(IOException e){
                     e.printStackTrace();
                 }
     }
-    
+
     protected void sendPacket(int id, Packet packet){
-        for(ConnectionHandler ch:activeConnections){
+        for(ConnectionHandler ch:activeConnections)
             if(ch.id == id){
-                try {
+                try{
                     ch.dispatcher.sendPacket(packet);
-                } catch (IOException e) {
+                } catch(IOException e){
                     e.printStackTrace();
                 }
                 break;
             }
-        }
+    }
+
+    public int identify(String name){
+        for(ConnectionHandler ch:activeConnections)
+            if(ch.name.equals(name))
+                return ch.id;
+        return -1;
     }
 
 }

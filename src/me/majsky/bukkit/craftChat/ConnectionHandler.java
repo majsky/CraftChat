@@ -7,9 +7,10 @@ import java.net.Socket;
 import me.majsky.networking.PacketDispatcher;
 import me.majsky.networking.PacketReciever;
 import me.majsky.networking.packet.Packet;
-import me.majsky.networking.packet.PacketBookMessenger;
 import me.majsky.networking.packet.PacketCmdCall;
 import me.majsky.networking.packet.PacketCmdResponse;
+import me.majsky.networking.packet.PacketMsg;
+import me.majsky.networking.packet.PacketPrivateMsg;
 import me.majsky.networking.packet.PacketStatusChange;
 
 import org.bukkit.Bukkit;
@@ -23,46 +24,55 @@ public class ConnectionHandler extends Thread{
     protected PacketReciever reciever;
     protected String name;
     protected final int id;
-    
+
     public ConnectionHandler(Socket connection, int id){
         super("BookChatClient thread");
         this.id = id;
-        this.s = connection;
-        try {
+        s = connection;
+        try{
             dispatcher = new PacketDispatcher(connection);
             reciever = new PacketReciever(connection);
-        } catch (IOException e) {
+        } catch(IOException e){
             e.printStackTrace();
         }
     }
 
     @Override
-    public void run() {
-        try {
+    public void run(){
+        try{
             String msg = "";
             do{
                 Packet packet = reciever.recievePacket();
-                if(packet instanceof PacketBookMessenger){
-                    PacketBookMessenger p = (PacketBookMessenger)packet;
+                if(packet instanceof PacketMsg){
+                    PacketMsg p = (PacketMsg)packet;
                     msg = p.msg;
-                    Bukkit.getServer().broadcastMessage(String.format("<%s%s%s> %s", ChatColor.YELLOW, p.sender, ChatColor.WHITE, p.msg));
-                    CraftChat.instance.server.dispatch(p.msg, p.sender, id);
-                }else if(packet instanceof PacketStatusChange){
+                    Bukkit.getServer().broadcastMessage(
+                            String.format("<%s%s%s> %s", ChatColor.YELLOW, name, ChatColor.WHITE, p.msg));
+                    CraftChat.instance.server.dispatch(p.msg, name, id);
+                } else if(packet instanceof PacketStatusChange){
                     PacketStatusChange p = (PacketStatusChange)packet;
                     if(p.stausID == PacketStatusChange.NICK_CHANGED){
                         Bukkit.getServer().broadcastMessage(ChatColor.YELLOW + name + " changed his name to " + p.nick);
                         CraftChat.instance.server.dispatch(name + " changed his nick to " + p.nick, "SERVER");
                         name = p.nick;
-                    }else if(p.stausID == PacketStatusChange.SERVER_JOIN){
+                    } else if(p.stausID == PacketStatusChange.SERVER_JOIN){
                         name = p.nick;
-                        Bukkit.getServer().broadcastMessage(ChatColor.YELLOW + name + " (" + s.getInetAddress().getHostName() + ") joined chat " + (!p.customText.equals("")?"("+p.customText+")":""));
-                        CraftChat.instance.server.dispatch(name + " (" + s.getInetAddress().getHostName() + ") joined chat " + (!p.customText.equals("")?"("+p.customText+")":""), "SERVER");
+                        Bukkit.getServer().broadcastMessage(
+                                ChatColor.YELLOW + name + " (" + s.getInetAddress().getHostName() + ") joined chat "
+                                        + (!p.customText.equals("") ? "(" + p.customText + ")" : ""));
+                        CraftChat.instance.server.dispatch(name + " (" + s.getInetAddress().getHostName()
+                                + ") joined chat " + (!p.customText.equals("") ? "(" + p.customText + ")" : ""),
+                                "SERVER");
                     }
-                }else if(packet instanceof PacketCmdCall){
-                    PacketCmdCall p = (PacketCmdCall) packet;
+                } else if(packet instanceof PacketPrivateMsg){
+                    PacketPrivateMsg p = (PacketPrivateMsg)packet;
+                    CraftChat.instance.server.sendPacket(CraftChat.instance.server.identify(p.target), p);
+                    CraftChat.instance.logger.info(String.format("%s sent private msg to %s", name, p.target));
+                } else if(packet instanceof PacketCmdCall){
+                    PacketCmdCall p = (PacketCmdCall)packet;
                     CraftChat.instance.logger.info("User " + name + " is calling command " + p.cmd);
                     PacketCmdResponse response = new PacketCmdResponse(p);
-                    switch (p.cmd) {
+                    switch (p.cmd){
                         case "list":
                             StringBuilder data = new StringBuilder();
                             for(Player player:Bukkit.getServer().getOnlinePlayers())
@@ -88,15 +98,15 @@ public class ConnectionHandler extends Thread{
                     if(p.needsResponse)
                         dispatcher.sendPacket(response);
                 }
-            }while(!msg.equals("END"));
-        } catch (Exception e) {
+            } while(!msg.equals("END"));
+        } catch(Exception e){
             if(e instanceof EOFException){
                 String msg = "Remote chat client " + name + " disconnected from server";
                 Bukkit.getServer().broadcastMessage(ChatColor.YELLOW + msg);
                 CraftChat.instance.server.dispatch(msg, "SERVER");
-            }else
+            } else
                 e.printStackTrace();
-        }finally{
+        } finally{
             CraftChat.instance.server.activeConnections.remove(this);
         }
     }
