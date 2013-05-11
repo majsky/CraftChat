@@ -4,3 +4,10 @@
 *.jar
 *.war
 *.ear
+
+# Ant files #
+build/
+verion.num
+
+# gedit stuff #
+*.*~

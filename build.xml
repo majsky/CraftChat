@@ -1,0 +1,51 @@
+<project name="CraftChat" basedir="." default="main">
+
+    <property name="src.dir"     value="src"/>
+    <property name="cp"          value="/home/ubuntu/Stiahnuté/bukkit-1.5.1-R0.2.jar;../../workspace/MajskyLib/bin"/>
+
+    <property name="build.dir"   value="build"/>
+    <property name="classes.dir" value="${build.dir}/classes"/>
+    <property name="jar.dir"     value="${build.dir}/jar"/>
+
+    <property name="main-class"  value="me.majsky.craftChat.CraftChatClient"/>
+
+    <property file="version.num"/>
+    <buildnumber file="build.num"/>
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+
+    <target name="compile">
+        <mkdir dir="${classes.dir}"/>
+	<mkdir dir="${build.dir}/src"/>
+	<copy todir="${build.dir}/src">
+	    <fileset dir="${src.dir}"/>
+	    <fileset dir="networking/"/>
+	</copy>
+        <javac srcdir="${build.dir}/src" destdir="${classes.dir}" classpath="${cp}" includeantruntime="false"/>
+	<delete dir="${build.dir}/src"/>
+    </target>
+
+    <target name="jar" depends="compile">
+        <mkdir dir="${jar.dir}"/>
+	<copy todir="${classes.dir}" file="plugin.yml"/>
+	<replace file="${classes.dir}/plugin.yml" token="@VERSION@" value="${version.num}"/>
+        <jar destfile="${jar.dir}/${ant.project.name}_v${version.num}b${build.number}.jar" basedir="${classes.dir}">
+            <manifest>
+                <attribute name="Main-Class" value="${main-class}"/>
+		<attribute name="Implementation-Version" value="${verion.num}-b${build.number}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="run" depends="jar">
+        <java jar="${jar.dir}/${ant.project.name}_v${version.num}b${build.number}.jar" fork="true"/>
+    </target>
+
+    <target name="clean-build" depends="clean,jar"/>
+
+    <target name="main" depends="clean,run"/>
+
+</project>
+
